@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wind Curtailment Loss Calculator</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Inter', sans-serif; }
+    /* Glassy card */
+    .card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,.08); border: 1px solid rgba(255,255,255,.3); }
+    .dark .card { background: rgba(17, 24, 39, 0.55); border-color: rgba(30,41,59,.5); }
+    /* Chips */
+    .chip { display:inline-flex; align-items:center; padding:.125rem .5rem; border-radius:9999px; font-size:.75rem; font-weight:600; }
+    /* Buttons */
+    .btn { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem 1rem; border-radius:.75rem; font-weight:600; box-shadow:0 4px 10px rgba(0,0,0,.06); transition:transform .06s ease, background .15s ease; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background:#2563eb; color:#fff; }
+    .btn-primary:hover { background:#1d4ed8; }
+    .btn-secondary { background:#f59e0b; color:#111827; }
+    .btn-secondary:hover { background:#d97706; }
+    .btn-ghost { background:rgba(255,255,255,.6); }
+    .dark .btn-ghost { background:rgba(31,41,55,.6); color:#e5e7eb; }
+    .btn-ghost:hover { background:rgba(255,255,255,.8); }
+    .dark .btn-ghost:hover { background:rgba(31,41,55,.8); }
+    .btn-danger { background:#dc2626; color:#fff; }
+    .btn-danger:hover { background:#b91c1c; }
+    dialog { border:none; }
+
+    /* Force paste areas white, even in dark mode */
+    textarea, input[type="text"] { background:#ffffff !important; color:#111827 !important; }
+    textarea::placeholder, input[type="text"]::placeholder { color:#6b7280 !important; }
+    .dark textarea, .dark input[type="text"] { background:#ffffff !important; color:#111827 !important; }
+    .dark textarea::placeholder, .dark input[type="text"]::placeholder { color:#9ca3af !important; }
+
+    /* Results table styling */
+    table.data{width:100%;border-collapse:separate;border-spacing:0;}
+    table.data th,table.data td{padding:.5rem .6rem;border-bottom:1px solid rgba(0,0,0,.07);} 
+    .dark table.data th,.dark table.data td{border-color:rgba(255,255,255,.12);} 
+    table.data thead th{position:sticky;top:0;background:rgba(255,255,255,.85);} 
+    .dark table.data thead th{background:rgba(17,24,39,.85);} 
+    .pill{display:inline-block;padding:.15rem .5rem;border-radius:.5rem;background:rgba(16,185,129,.12);} 
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100 min-h-screen">
+  <!-- Header -->
+  <header class="sticky top-0 z-30 backdrop-blur bg-white/60 dark:bg-gray-900/60 border-b border-white/20">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 grid place-items-center text-white shadow">
+          <i class="ph ph-wind text-lg"></i>
+        </div>
+        <div>
+          <h1 id="title" class="text-xl font-bold text-blue-900 dark:text-blue-200">Wind Curtailment Loss Calculator</h1>
+          <p class="text-xs text-gray-600 dark:text-gray-300">Fancy UI • Same math & parsing logic</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Language selector -->
+        <label for="lang" id="langLabel" class="sr-only">Language</label>
+        <select id="lang" class="border border-gray-300 dark:border-gray-700 rounded px-2 py-1 bg-white/80 dark:bg-gray-800/80 focus:ring-2 focus:ring-blue-400">
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+        </select>
+        <!-- Dark mode toggle -->
+        <button id="themeToggle" class="btn btn-ghost" title="Toggle theme">
+          <i class="ph ph-moon-stars"></i>
+        </button>
+        <!-- Help dialog opener -->
+        <button id="helpBtn" class="btn btn-ghost" title="Help">
+          <i class="ph ph-question"></i>
+          <span class="hidden sm:inline">Help</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 grid lg:grid-cols-3 gap-6">
+    <!-- Left column: inputs -->
+    <section class="lg:col-span-2 space-y-6">
+      <!-- Full data card -->
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i class="ph ph-database text-blue-600"></i>
+            <h2 id="fullDataLabel" class="text-lg font-semibold">Full Data</h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="chip bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" id="rowsCount">0 rows</span>
+            <button id="pasteFull" class="btn btn-ghost" title="Paste from clipboard"><i class="ph ph-clipboard-text"></i></button>
+            <button id="clearFull" class="btn btn-ghost" title="Clear"><i class="ph ph-trash"></i></button>
+          </div>
+        </div>
+        <textarea id="fullData" rows="10" class="w-full rounded-lg border border-gray-300 dark:border-gray-700 p-3 font-mono text-sm" placeholder="Paste FULL_DATA here"></textarea>
+        <p class="text-xs mt-2 text-gray-600 dark:text-gray-300">Tip: CSV/tab separated. The 8th column is used as energy (GWh). Lines containing the header word "sector" are ignored.</p>
+      </div>
+
+      <!-- Curtailments card -->
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i class="ph ph-scissors text-yellow-600"></i>
+            <h2 class="text-lg font-semibold" id="curtailmentsTitle">Curtailment Scenarios</h2>
+          </div>
+          <button type="button" id="addMore" class="btn btn-secondary"><i class="ph ph-plus"></i><span id="addMoreText">Add</span></button>
+        </div>
+        <div id="curtailedInputs" class="space-y-6">
+          <!-- One block template gets injected here at start -->
+        </div>
+      </div>
+
+      <!-- Actions card -->
+      <div class="card p-5 flex flex-wrap gap-3">
+        <button type="button" id="calcBtn" class="btn btn-primary"><i class="ph ph-equals"></i><span id="calcText">Calculate</span></button>
+        <button type="button" id="loadExample" class="btn btn-ghost"><i class="ph ph-magic-wand"></i><span id="exampleText">Load example</span></button>
+        <button type="button" id="resetAll" class="btn btn-danger"><i class="ph ph-arrow-counter-clockwise"></i><span id="resetText">Reset</span></button>
+      </div>
+    </section>
+
+    <!-- Right column: results & tools -->
+    <aside class="space-y-6">
+      <div class="card p-5 hidden" id="resultsCard">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i class="ph ph-chart-bar text-green-600"></i>
+            <h2 id="resultsTitle" class="text-lg font-semibold">Results</h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="copyResults" class="btn btn-ghost" title="Copy as TSV"><i class="ph ph-copy"></i></button>
+            <button id="downloadXLSX" class="btn btn-ghost" title="Download .xlsx"><i class="ph ph-download-simple"></i></button>
+          </div>
+        </div>
+        <div id="tableHost" class="overflow-auto max-h-[60vh]"></div>
+        <pre id="summaryTable" class="overflow-auto bg-white/70 dark:bg-gray-900/60 rounded-lg p-4 whitespace-pre font-mono text-xs border border-blue-200 dark:border-blue-900 max-h-[60vh]"></pre>
+      </div>
+
+      <div class="card p-5">
+        <h3 class="font-semibold flex items-center gap-2 mb-2"><i class="ph ph-info"></i><span id="tipsTitle">Tips</span></h3>
+        <ul class="text-sm space-y-2 list-disc pl-5" id="tipsList">
+          <li>Use <span class="font-mono">51-92</span> or wrapping ranges like <span class="font-mono">356-42</span>.</li>
+          <li>Switch language for correct decimal separators ("," vs ".").</li>
+          <li>All calculations are local in your browser; nothing is uploaded.</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Help dialog -->
+  <dialog id="helpDialog" class="rounded-2xl p-0 w-11/12 max-w-2xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100">
+    <div class="p-5">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-semibold" id="helpTitle">How to use</h3>
+        <button class="btn btn-ghost" onclick="helpDialog.close()"><i class="ph ph-x"></i></button>
+      </div>
+      <ol class="mt-3 space-y-2 text-sm" id="helpBody">
+        <li>1) Paste your <strong>Full Data</strong> table (sector-wise energy in GWh).</li>
+        <li>2) Add one or more <strong>Curtailment</strong> tables and set the turbulence ranges.</li>
+        <li>3) Click <em>Calculate</em>. Results show sector-by-sector overlap and total loss.</li>
+        <li>Locale-aware parsing ensures German/English number formats are interpreted correctly.</li>
+      </ol>
+    </div>
+    <div class="border-t border-gray-200 dark:border-gray-700 p-4 flex justify-end gap-3">
+      <button class="btn btn-primary" onclick="helpDialog.close()">OK</button>
+    </div>
+  </dialog>
+
+  <template id="curtailTemplate">
+    <div class="curtailedBlock border border-dashed border-yellow-300 dark:border-yellow-800 rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="chip bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"><i class="ph ph-number-square"></i><span class="scenarioLabel ml-1">Scenario</span></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn btn-ghost moveUp" title="Move up"><i class="ph ph-arrow-up"></i></button>
+          <button type="button" class="btn btn-ghost moveDown" title="Move down"><i class="ph ph-arrow-down"></i></button>
+          <button type="button" class="btn btn-ghost duplicate" title="Duplicate"><i class="ph ph-copy"></i></button>
+          <button type="button" class="btn btn-ghost clearOne" title="Clear"><i class="ph ph-eraser"></i></button>
+          <button type="button" class="btn btn-ghost removeOne" title="Remove"><i class="ph ph-trash"></i></button>
+        </div>
+      </div>
+      <label class="block text-sm font-semibold mb-1 curtailLabel">Curtailment Data</label>
+      <textarea rows="6" class="curtailedData w-full rounded-lg border border-gray-300 dark:border-gray-700 p-3 font-mono text-sm" placeholder="Paste CURTAILED_DATA_1 here"></textarea>
+
+      <div class="grid sm:grid-cols-2 gap-3 mt-3">
+        <div>
+          <label class="block text-sm font-semibold mb-1 rangeLabel">Turbulence Range</label>
+          <input type="text" class="turbulenceRange w-full rounded-lg border border-gray-300 dark:border-gray-700 p-2" placeholder="e.g. 51-92 or 356-42" />
+        </div>
+        <div class="flex items-end gap-2">
+          <button type="button" class="btn btn-ghost pasteOne flex-1" title="Paste from clipboard"><i class="ph ph-clipboard-text"></i><span>Paste</span></button>
+          <button type="button" class="btn btn-ghost fillRange" title="Auto-fill sector ranges"><i class="ph ph-compass"></i><span>Auto</span></button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // =========================
+    // i18n strings (unchanged keys)
+    // =========================
+    const STRINGS = {
+      en: {
+        language: 'Language',
+        title: 'Wind Curtailment Loss Calculator',
+        fullData: 'Full Data',
+        curtailedData: 'Curtailment Data',
+        turbulenceRange: 'Turbulence Range',
+        rangePlaceholder: 'e.g. 51-92 or 356-42',
+        addMore: 'Add Curtailment',
+        calculate: 'Calculate',
+        results: 'Results',
+        scenario: 'Scenario',
+        turbRange: 'Turbulence Range',
+        sector: 'Sector',
+        overlap: 'Overlap',
+        loss: 'Loss',
+        totalLoss: 'Total Loss',
+        lossPct: 'Loss Percentage',
+        combinedTotalLoss: 'Combined Total Loss',
+        kwhSuffix: 'kWh',
+        tipsTitle: 'Tips',
+        helpTitle: 'How to use',
+        example: 'Load example',
+        reset: 'Reset'
+      },
+      de: {
+        language: 'Sprache',
+        title: 'Berechner für Ertragsverlust durch Abschaltung',
+        fullData: 'Vollständige Daten',
+        curtailedData: 'Abschalt-Daten',
+        turbulenceRange: 'Turbulenzbereich',
+        rangePlaceholder: 'z.\u202F B. 51-92 oder 356-42',
+        addMore: 'Weitere Abschaltung hinzufügen',
+        calculate: 'Berechnen',
+        results: 'Ergebnisse',
+        scenario: 'Szenario',
+        turbRange: 'Turbulenzbereich',
+        sector: 'Sektor',
+        overlap: 'Überlappung',
+        loss: 'Verlust',
+        totalLoss: 'Gesamtverlust',
+        lossPct: 'Verlust in %',
+        combinedTotalLoss: 'Kumulativer Gesamtverlust',
+        kwhSuffix: 'kWh',
+        tipsTitle: 'Hinweise',
+        helpTitle: 'So funktioniert\'s',
+        example: 'Beispiel laden',
+        reset: 'Zurücksetzen'
+      }
+    };
+
+    // =========================
+    // Theme & language
+    // =========================
+    const langSelect = document.getElementById('lang');
+    const defaultLang = (localStorage.getItem('lang')) || ((navigator.language || 'en').startsWith('de') ? 'de' : 'en');
+    langSelect.value = defaultLang;
+
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    if (savedTheme === 'dark') document.documentElement.classList.add('dark');
+
+    themeToggle.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    });
+
+    function applyI18n() {
+      const L = STRINGS[langSelect.value];
+      document.getElementById('langLabel').textContent = L.language;
+      document.getElementById('title').textContent = L.title;
+      document.getElementById('fullDataLabel').textContent = L.fullData;
+      document.getElementById('curtailmentsTitle').textContent = L.curtailedData;
+      document.getElementById('calcText').textContent = L.calculate;
+      document.getElementById('resultsTitle').textContent = L.results;
+      document.getElementById('exampleText').textContent = L.example;
+      document.getElementById('resetText').textContent = L.reset;
+      document.querySelectorAll('.curtailLabel').forEach(el => el.textContent = L.curtailedData);
+      document.querySelectorAll('.rangeLabel').forEach(el => el.textContent = L.turbulenceRange);
+      document.querySelectorAll('.turbulenceRange').forEach(el => el.placeholder = L.rangePlaceholder);
+      document.querySelectorAll('.scenarioLabel').forEach((el, idx) => el.textContent = `${L.scenario} ${idx+1}`);
+      // Update placeholders in curtailed textareas
+      document.querySelectorAll('.curtailedData').forEach((ta, idx) => {
+        ta.placeholder = langSelect.value === 'de' ? `Abschalt-Daten_${idx+1} einfügen` : `Paste CURTAILED_DATA_${idx+1} here`;
+      });
+      // update tips & help
+      document.getElementById('tipsTitle').textContent = L.tipsTitle;
+      document.getElementById('helpTitle').textContent = L.helpTitle;
+      localStorage.setItem('lang', langSelect.value);
+    }
+
+    langSelect.addEventListener('change', () => { applyI18n(); saveState(); });
+
+    // =========================
+    // Number helpers — LOGIC UNCHANGED
+    // =========================
+    function normalizeNumberString(str, lang) {
+      if (lang === 'de') {
+        return str.replace(/\./g, '').replace(/,/g, '.');
+      } else {
+        return str.replace(/,/g, '');
+      }
+    }
+
+    function parseLocaleNumber(str) {
+      const lang = langSelect.value;
+      const s = normalizeNumberString((str || '').trim(), lang);
+      const v = parseFloat(s);
+      return isNaN(v) ? NaN : v;
+    }
+
+    function nf() {
+      const lang = langSelect.value;
+      const locale = lang === 'de' ? 'de-DE' : 'en-US';
+      return new Intl.NumberFormat(locale);
+    }
+
+    function formatFixed(num, digits) {
+      const lang = langSelect.value;
+      let s = Number(num).toFixed(digits);
+      if (lang === 'de') s = s.replace('.', ',');
+      return s;
+    }
+
+    function formatInteger(num) {
+      return nf().format(Math.round(num));
+    }
+
+    // =========================
+    // Core math & parsing — LOGIC UNCHANGED
+    // =========================
+    function parseCSV(text) {
+      const lines = text.trim().split('\n');
+      return lines
+        .map(line => line.trim())
+        .filter(line => line && !line.toLowerCase().includes('sector'))
+        .map(line => (langSelect && langSelect.value === 'de') ? line.split(/\s+|\t/) : line.split(/\s+|,|\t/))
+        .filter(row => row.length >= 8 && !isNaN(parseLocaleNumber(row[7])));
+    }
+
+    function parseRangeString(r) {
+      const parts = r.split(/[-–]/).map(p => parseLocaleNumber(p.trim()));
+      if (parts.length === 2 && parts.every(v => !isNaN(v))) {
+        const [start, end] = parts;
+        return start <= end ? [[start, end]] : [[start, 360], [0, end]];
+      }
+      return [];
+    }
+
+    function calculateOverlapLoss(fullRows, curtailedRows, ranges) {
+      let loss = 0;
+      const result = [];
+
+      for (let i = 0; i < Math.min(fullRows.length, curtailedRows.length); i++) {
+        const angle = parseLocaleNumber(fullRows[i][1]);
+        const fullGWh = parseLocaleNumber(fullRows[i][7]);
+        const curtailedGWh = parseLocaleNumber(curtailedRows[i][7]);
+
+        const start = (angle - 15 + 360) % 360;
+        const end = (angle + 15) % 360;
+
+        let overlapDeg = 0;
+        for (const [rStart, rEnd] of ranges) {
+          if (start < end) {
+            overlapDeg += Math.max(0, Math.min(end, rEnd) - Math.max(start, rStart));
+          } else {
+            overlapDeg += Math.max(0, Math.min(360, rEnd) - Math.max(start, rStart));
+            overlapDeg += Math.max(0, Math.min(end, rEnd) - Math.max(0, rStart));
+          }
+        }
+
+        const frac = overlapDeg / 30;
+        const lossGWh = (fullGWh - curtailedGWh) * frac;
+        loss += lossGWh;
+
+        result.push({
+          sector: i + 1,
+          angle: angle,
+          overlapDeg: overlapDeg,
+          fraction: frac,
+          full: fullGWh,
+          curtailed: curtailedGWh,
+          loss: lossGWh,
+          kwh: lossGWh * 1e6
+        });
+      }
+
+      return { result, totalLoss: loss };
+    }
+
+    // =========================
+    // UI helpers
+    // =========================
+    const fullDataTA = document.getElementById('fullData');
+    const resultsCard = document.getElementById('resultsCard');
+    const summaryTable = document.getElementById('summaryTable');
+    const tableHost = document.getElementById('tableHost');
+    const rowsCount = document.getElementById('rowsCount');
+
+    function updateRowCount() {
+      const count = parseCSV(fullDataTA.value).length;
+      rowsCount.textContent = `${count} ${count === 1 ? 'row' : 'rows'}`;
+    }
+
+    function curtBlock() {
+      const tpl = document.getElementById('curtailTemplate');
+      return tpl.content.firstElementChild.cloneNode(true);
+    }
+
+    function renumberScenarios() {
+      const L = STRINGS[langSelect.value];
+      document.querySelectorAll('#curtailedInputs .curtailedBlock .scenarioLabel').forEach((el, idx) => {
+        el.textContent = `${L.scenario} ${idx+1}`;
+      });
+      applyI18n();
+    }
+
+    function attachBlockActions(block) {
+      block.querySelector('.removeOne').addEventListener('click', () => { block.remove(); renumberScenarios(); saveState(); });
+      block.querySelector('.clearOne').addEventListener('click', () => { block.querySelector('.curtailedData').value=''; block.querySelector('.turbulenceRange').value=''; saveState(); });
+      block.querySelector('.duplicate').addEventListener('click', () => { const nb = curtBlock(); nb.querySelector('.curtailedData').value = block.querySelector('.curtailedData').value; nb.querySelector('.turbulenceRange').value = block.querySelector('.turbulenceRange').value; document.getElementById('curtailedInputs').appendChild(nb); attachBlockActions(nb); renumberScenarios(); saveState(); });
+      block.querySelector('.moveUp').addEventListener('click', () => { const prev = block.previousElementSibling; if (prev) block.parentNode.insertBefore(block, prev); renumberScenarios(); saveState(); });
+      block.querySelector('.moveDown').addEventListener('click', () => { const next = block.nextElementSibling; if (next) block.parentNode.insertBefore(next, block); renumberScenarios(); saveState(); });
+      block.querySelector('.pasteOne').addEventListener('click', async () => { try { const text = await navigator.clipboard.readText(); block.querySelector('.curtailedData').value = text; saveState(); } catch(e){} });
+      block.querySelector('.fillRange').addEventListener('click', () => {
+        // Convenience: prefill range from first/last sector of the curtailed table (non-intrusive)
+        const rows = parseCSV(block.querySelector('.curtailedData').value);
+        if (rows.length>0) {
+          const first = parseLocaleNumber(rows[0][1]);
+          const last = parseLocaleNumber(rows[rows.length-1][1]);
+          const start = (first - 15 + 360) % 360;
+          const end = (last + 15) % 360;
+          block.querySelector('.turbulenceRange').value = `${formatFixed(start,0)}-${formatFixed(end,0)}`.replace(',', '.');
+          saveState();
+        }
+      });
+      block.querySelector('.curtailedData').addEventListener('input', saveState);
+      block.querySelector('.turbulenceRange').addEventListener('input', saveState);
+    }
+
+    function addCurtailmentBlock(prefill = {}) {
+      const block = curtBlock();
+      if (prefill.data) block.querySelector('.curtailedData').value = prefill.data;
+      if (prefill.range) block.querySelector('.turbulenceRange').value = prefill.range;
+      document.getElementById('curtailedInputs').appendChild(block);
+      attachBlockActions(block);
+      renumberScenarios();
+      saveState();
+    }
+
+    // Initial block
+    addCurtailmentBlock();
+
+    // Buttons
+    document.getElementById('addMore').addEventListener('click', () => addCurtailmentBlock());
+
+    document.getElementById('calcBtn').addEventListener('click', () => {
+      const full = parseCSV(fullDataTA.value.trim());
+      const blocks = document.querySelectorAll('.curtailedBlock');
+      const L = STRINGS[langSelect.value];
+
+      if (full.length === 0 || blocks.length === 0) {
+        resultsCard.classList.add('hidden');
+        return;
+      }
+
+      let grandLoss = 0;
+      const totalFullProd = full.reduce((sum, row) => sum + parseLocaleNumber(row[7]), 0);
+
+      // Prepare Excel + UI tables
+      const excelSheets = [];
+      tableHost.innerHTML = '';
+
+      blocks.forEach((block, i) => {
+        const curtailed = parseCSV(block.querySelector('.curtailedData').value.trim());
+        const rangeStrRaw = block.querySelector('.turbulenceRange').value.trim();
+        const ranges = parseRangeString(rangeStrRaw);
+
+        const { result, totalLoss } = calculateOverlapLoss(full, curtailed, ranges);
+        grandLoss += totalLoss;
+
+        const scenarioLossPercentage = (1 - ((totalFullProd - totalLoss) / totalFullProd)) * 100;
+
+        // Build rows for this scenario (for Excel + on-screen table)
+        const rows = result.map(r => ({
+          Sector: r.sector,
+          Angle: Number(formatFixed(r.angle,0).replace(',','.')),
+          OverlapDeg: Number(formatFixed(r.overlapDeg,2).replace(',','.')),
+          Fraction: Number(formatFixed(r.fraction,4).replace(',','.')),
+          Loss_GWh: Number(formatFixed(r.loss,6).replace(',','.')),
+          Loss_kWh: Math.round(r.kwh)
+        }));
+        excelSheets.push({ name: `${L.scenario} ${i+1}`, rows, totalLoss, scenarioLossPercentage, rangeStrRaw });
+
+        // Render table in UI
+        const card = document.createElement('div');
+        card.className = 'mb-5';
+        const header = document.createElement('div');
+        header.className = 'mb-2 flex items-center justify-between';
+        header.innerHTML = `<div class="font-semibold">${L.scenario} ${i+1} <span class="pill">${L.turbRange}: ${rangeStrRaw}</span></div>
+          <div class="text-sm">${L.totalLoss}: <strong>${formatFixed(totalLoss,6)} GWh</strong> • ${L.lossPct}: <strong>${formatFixed(scenarioLossPercentage,2)}%</strong></div>`;
+        const table = document.createElement('table');
+        table.className = 'data';
+        table.innerHTML = `<thead><tr><th>${L.sector}</th><th>Angle</th><th>${L.overlap} (°)</th><th>Fraction</th><th>${L.loss} (GWh)</th><th>${L.kwhSuffix}</th></tr></thead>`;
+        const tbody = document.createElement('tbody');
+        rows.forEach(r => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${r.Sector}</td><td>${r.Angle}</td><td>${r.OverlapDeg}</td><td>${r.Fraction}</td><td>${r.Loss_GWh}</td><td>${r.Loss_kWh}</td>`;
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        card.appendChild(header);
+        card.appendChild(table);
+        tableHost.appendChild(card);
+      });
+
+      const lossPercentage = (1 - ((totalFullProd - grandLoss) / totalFullProd)) * 100;
+
+      // Render combined totals
+      const totalsDiv = document.createElement('div');
+      totalsDiv.className = 'mt-4 text-sm';
+      totalsDiv.innerHTML = `<strong>${L.combinedTotalLoss}:</strong> ${formatFixed(grandLoss,6)} GWh (${formatInteger(grandLoss * 1e6)} ${L.kwhSuffix})<br/><strong>${L.lossPct}:</strong> ${formatFixed(lossPercentage,2)}%`;
+      tableHost.appendChild(totalsDiv);
+
+      // Also keep legacy text output for compatibility
+      let finalOutput = '';
+      excelSheets.forEach((s, idx) => {
+        finalOutput += `\n=== ${L.scenario} ${idx + 1} ===\n`;
+        finalOutput += `${L.turbRange}: ${s.rangeStrRaw}\n`;
+        s.rows.forEach(r => {
+          finalOutput += `${L.sector} ${r.Sector} | ${r.Angle}° | ${L.overlap}: ${r.OverlapDeg.toFixed(2)}° (${r.Fraction.toFixed(4)}) | ${L.loss}: ${r.Loss_GWh.toFixed(6)} GWh (${r.Loss_kWh} ${L.kwhSuffix})\n`;
+        });
+        finalOutput += `${L.totalLoss}: ${s.totalLoss.toFixed(6)} GWh\n`;
+        finalOutput += `${L.lossPct}: ${s.scenarioLossPercentage.toFixed(2)}%\n`;
+      });
+      finalOutput += `\n=== ${L.combinedTotalLoss}: ${grandLoss.toFixed(6)} GWh (${Math.round(grandLoss*1e6).toLocaleString() } ${L.kwhSuffix})`;
+      finalOutput += `\n=== ${L.lossPct}: ${lossPercentage.toFixed(2)}%`;
+      summaryTable.textContent = finalOutput;
+
+      // Show card
+      resultsCard.classList.remove('hidden');
+
+      // Save for persistence + Excel export
+      window.__excelSheets = { sheets: excelSheets, totals: { grandLoss, lossPercentage }, labels: L };
+      saveState();
+    });
+
+    // Clipboard helpers
+    document.getElementById('pasteFull').addEventListener('click', async () => {
+      try { const text = await navigator.clipboard.readText(); fullDataTA.value = text; updateRowCount(); saveState(); } catch (e) {}
+    });
+    document.getElementById('clearFull').addEventListener('click', () => { fullDataTA.value=''; updateRowCount(); saveState(); });
+
+    // Download Excel
+    document.getElementById('downloadXLSX').addEventListener('click', () => {
+      const L = window.__excelSheets?.labels || STRINGS[langSelect.value];
+      const book = XLSX.utils.book_new();
+      (window.__excelSheets?.sheets || []).forEach(s => {
+        const ws = XLSX.utils.json_to_sheet(s.rows);
+        // Append totals row
+        XLSX.utils.sheet_add_aoa(ws, [['', '', '', 'Total', s.totalLoss, Math.round(s.totalLoss*1e6)]], { origin: -1 });
+        XLSX.utils.book_append_sheet(book, ws, s.name.slice(0,31));
+      });
+      const t = window.__excelSheets?.totals || { grandLoss: 0, lossPercentage: 0 };
+      const wsSum = XLSX.utils.aoa_to_sheet([[L.combinedTotalLoss, t.grandLoss],[L.lossPct, t.lossPercentage + ' %']]);
+      XLSX.utils.book_append_sheet(book, wsSum, 'Summary');
+      XLSX.writeFile(book, 'curtailment_results.xlsx');
+    });
+
+    // Copy results as TSV (from rendered tables)
+    document.getElementById('copyResults').addEventListener('click', async () => {
+      const tables = Array.from(tableHost.querySelectorAll('table.data'));
+      const lines = [];
+      tables.forEach((table, idx) => {
+        lines.push(`Scenario ${idx+1}`);
+        const rows = Array.from(table.querySelectorAll('tr'));
+        rows.forEach(tr => {
+          const cells = Array.from(tr.children).map(td => td.textContent.replace(/\t/g,' '));
+          lines.push(cells.join('\t'));
+        });
+        lines.push('');
+      });
+      try { await navigator.clipboard.writeText(lines.join('\n')); } catch (e) {}
+    });
+
+    // Example loader (safe – only fills textareas)
+    document.getElementById('loadExample').addEventListener('click', () => {
+      const sampleFull = `Sector Angle  V1  V2  V3  V4  Hours  GWh\n1 0 4.2 6.9 2.01 6.14 268 0.436\n2 30 5.5 7.2 2.4 6.34 253 0.790\n3 60 5.8 7.2 2.4 6.39 258 0.947\n4 90 6.1 7.3 2.45 6.5 266 0.903`;
+      const sampleCurt = `Sector Angle  V1  V2  V3  V4  Hours  GWh\n1 0 4.2 6.9 2.01 6.14 268 0.400\n2 30 5.5 7.2 2.4 6.34 253 0.700\n3 60 5.8 7.2 2.4 6.39 258 0.800\n4 90 6.1 7.3 2.45 6.5 266 0.850`;
+      fullDataTA.value = sampleFull; updateRowCount();
+      const firstBlock = document.querySelector('#curtailedInputs .curtailedBlock');
+      firstBlock.querySelector('.curtailedData').value = sampleCurt;
+      firstBlock.querySelector('.turbulenceRange').value = '15-75';
+      saveState();
+    });
+
+    // Reset all
+    document.getElementById('resetAll').addEventListener('click', () => {
+      fullDataTA.value='';
+      document.getElementById('curtailedInputs').innerHTML='';
+      addCurtailmentBlock();
+      summaryTable.textContent='';
+      tableHost.innerHTML='';
+      resultsCard.classList.add('hidden');
+      updateRowCount();
+      saveState();
+    });
+
+    // Help dialog
+    const helpDialog = document.getElementById('helpDialog');
+    document.getElementById('helpBtn').addEventListener('click', () => helpDialog.showModal());
+
+    // Live row counter
+    fullDataTA.addEventListener('input', updateRowCount);
+    updateRowCount();
+
+    // =========================
+    // Persistence
+    // =========================
+    function saveState() {
+      const blocks = Array.from(document.querySelectorAll('#curtailedInputs .curtailedBlock')).map(b => ({
+        data: b.querySelector('.curtailedData').value,
+        range: b.querySelector('.turbulenceRange').value
+      }));
+      const state = {
+        lang: langSelect.value,
+        full: fullDataTA.value,
+        blocks,
+        // store the visible table for quick reload
+        results: tableHost.innerHTML,
+        legacyText: summaryTable.textContent
+      };
+      localStorage.setItem('curtail_app_state', JSON.stringify(state));
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem('curtail_app_state');
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        langSelect.value = s.lang || langSelect.value;
+        fullDataTA.value = s.full || '';
+        document.getElementById('curtailedInputs').innerHTML='';
+        (s.blocks || [{}]).forEach(b => addCurtailmentBlock(b));
+        if (s.results) { tableHost.innerHTML = s.results; resultsCard.classList.remove('hidden'); }
+        if (s.legacyText) { summaryTable.textContent = s.legacyText; }
+      } catch(e) {}
+      updateRowCount();
+      applyI18n();
+    }
+
+    // Initialize
+    applyI18n();
+    loadState();
+  </script>
+</body>
+</html>
