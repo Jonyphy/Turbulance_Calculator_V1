@@ -597,10 +597,10 @@
         });
 
         // Sum row (two blank spacer columns like your example)
-        lines.push(`\t\t\t\tsum\t${s.totalLoss.toFixed(6)}\t${Math.round(s.totalLoss * 1e6)}`);
-
-        // Percentages row (three blanks, then label)
-        lines.push(`\t\t\t\tpercentages\t${s.scenarioLossPercentage.toFixed(2)}`);
+        const T3 = '\t\t\t';
+        lines.push(`${T3}sum\t${s.totalLoss.toFixed(6)}\t${Math.round(s.totalLoss * 1e6)}`);
+        lines.push(`${T3}percentages\t${s.scenarioLossPercentage.toFixed(2)}`);
+        
 
         // Blank line between scenarios
         lines.push('');
