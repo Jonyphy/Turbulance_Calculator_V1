@@ -40,11 +40,11 @@
 
     /* Results table styling */
     table.data{width:100%;border-collapse:separate;border-spacing:0;}
-    table.data th,table.data td{padding:.5rem .6rem;border-bottom:1px solid rgba(0,0,0,.07);} 
-    .dark table.data th,.dark table.data td{border-color:rgba(255,255,255,.12);} 
-    table.data thead th{position:sticky;top:0;background:rgba(255,255,255,.85);} 
-    .dark table.data thead th{background:rgba(17,24,39,.85);} 
-    .pill{display:inline-block;padding:.15rem .5rem;border-radius:.5rem;background:rgba(16,185,129,.12);} 
+    table.data th,table.data td{padding:.5rem .6rem;border-bottom:1px solid rgba(0,0,0,.07);}
+    .dark table.data th,.dark table.data td{border-color:rgba(255,255,255,.12);}
+    table.data thead th{position:sticky;top:0;background:rgba(255,255,255,.85);}
+    .dark table.data thead th{background:rgba(17,24,39,.85);}
+    .pill{display:inline-block;padding:.15rem .5rem;border-radius:.5rem;background:rgba(16,185,129,.12);}
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 text-gray-800 dark:text-gray-100 min-h-screen">
@@ -431,9 +431,9 @@
       block.querySelector('.fillRange').addEventListener('click', () => {
         // Convenience: prefill range from first/last sector of the curtailed table (non-intrusive)
         const rows = parseCSV(block.querySelector('.curtailedData').value);
-        if (rows.length>0) {
+        if (rows.length > 0) {
           const first = parseLocaleNumber(rows[0][1]);
-          const last = parseLocaleNumber(rows[rows.length-1][1]);
+          const last = parseLocaleNumber(rows[rows.length - 1][1]);
           const start = (first - 15 + 360) % 360;
           const end = (last + 15) % 360;
           block.querySelector('.turbulenceRange').value = `${formatFixed(start,0)}-${formatFixed(end,0)}`.replace(',', '.');
@@ -539,7 +539,7 @@
         finalOutput += `${L.totalLoss}: ${s.totalLoss.toFixed(6)} GWh\n`;
         finalOutput += `${L.lossPct}: ${s.scenarioLossPercentage.toFixed(2)}%\n`;
       });
-      finalOutput += `\n=== ${L.combinedTotalLoss}: ${grandLoss.toFixed(6)} GWh (${Math.round(grandLoss*1e6).toLocaleString() } ${L.kwhSuffix})`;
+      finalOutput += `\n=== ${L.combinedTotalLoss}: ${grandLoss.toFixed(6)} GWh (${Math.round(grandLoss*1e6).toLocaleString()} ${L.kwhSuffix})`;
       finalOutput += `\n=== ${L.lossPct}: ${lossPercentage.toFixed(2)}%`;
       summaryTable.textContent = finalOutput;
 
@@ -573,20 +573,48 @@
       XLSX.writeFile(book, 'curtailment_results.xlsx');
     });
 
-    // Copy results as TSV (from rendered tables)
+    // Copy results as Excel-friendly TSV with range + sum + percentages
     document.getElementById('copyResults').addEventListener('click', async () => {
-      const tables = Array.from(tableHost.querySelectorAll('table.data'));
+      const L = window.__excelSheets?.labels || STRINGS[langSelect.value];
+      const sheets = window.__excelSheets?.sheets || [];
+      const totals = window.__excelSheets?.totals || { grandLoss: 0, lossPercentage: 0 };
+
+      if (!sheets.length) return; // nothing to copy until you click Calculate
+
       const lines = [];
-      tables.forEach((table, idx) => {
-        lines.push(`Scenario ${idx+1}`);
-        const rows = Array.from(table.querySelectorAll('tr'));
-        rows.forEach(tr => {
-          const cells = Array.from(tr.children).map(td => td.textContent.replace(/\t/g,' '));
-          lines.push(cells.join('\t'));
+
+      sheets.forEach((s, idx) => {
+        // Header block
+        lines.push(`Turbulence Range: ${s.rangeStrRaw}`);
+        lines.push(`Scenario ${idx + 1}`);
+
+        // Table header
+        lines.push(`${L.sector}\tAngle\t${L.overlap} (°)\tFraction\t${L.loss} (GWh)\t${L.kwhSuffix}`);
+
+        // Table rows
+        s.rows.forEach(r => {
+          lines.push(`${r.Sector}\t${r.Angle}\t${r.OverlapDeg}\t${r.Fraction}\t${r.Loss_GWh}\t${r.Loss_kWh}`);
         });
+
+        // Sum row (two blank spacer columns like your example)
+        lines.push(`\t\t\t\tsum\t${s.totalLoss.toFixed(6)}\t${Math.round(s.totalLoss * 1e6)}`);
+
+        // Percentages row (three blanks, then label)
+        lines.push(`\t\t\t\tpercentages\t${s.scenarioLossPercentage.toFixed(2)}`);
+
+        // Blank line between scenarios
         lines.push('');
       });
-      try { await navigator.clipboard.writeText(lines.join('\n')); } catch (e) {}
+
+      // Combined totals at the end (optional)
+      lines.push(`${L.combinedTotalLoss}\t${totals.grandLoss.toFixed(6)}\t${Math.round(totals.grandLoss * 1e6)}`);
+      lines.push(`${L.lossPct}\t${totals.lossPercentage.toFixed(2)}`);
+
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+      } catch (e) {
+        console.warn('Copy failed', e);
+      }
     });
 
     // Example loader (safe – only fills textareas)
