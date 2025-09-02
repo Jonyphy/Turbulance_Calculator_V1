@@ -57,7 +57,6 @@
         </div>
         <div>
           <h1 id="title" class="text-xl font-bold text-blue-900 dark:text-blue-200">Wind Curtailment Loss Calculator</h1>
-          <p class="text-xs text-gray-600 dark:text-gray-300">Fancy UI • Same math & parsing logic</p>
         </div>
       </div>
 
@@ -575,7 +574,7 @@
 
     // Copy results as Excel-friendly TSV with range + sum + percentages
     document.getElementById('copyResults').addEventListener('click', async () => {
-      const L = window.__excelSheets?.labels || STRINGS[langSelect.value];
+      const L = STRINGS['de'];
       const sheets = window.__excelSheets?.sheets || [];
       const totals = window.__excelSheets?.totals || { grandLoss: 0, lossPercentage: 0 };
 
@@ -585,11 +584,11 @@
 
       sheets.forEach((s, idx) => {
         // Header block
-        lines.push(`Turbulence Range: ${s.rangeStrRaw}`);
-        lines.push(`Scenario ${idx + 1}`);
+        lines.push(`${L.turbRange}: ${s.rangeStrRaw}`);
+        lines.push(`${L.scenario} ${idx + 1}`);
 
         // Table header
-        lines.push(`${L.sector}\tAngle\t${L.overlap} (°)\tFraction\t${L.loss} (GWh)\t${L.kwhSuffix}`);
+        lines.push(`${L.sector}\tWinkel\t${L.overlap} (°)\tAnteil\t${L.loss} (GWh)\t${L.kwhSuffix}`);
 
         // Table rows
         s.rows.forEach(r => {
@@ -598,8 +597,8 @@
 
         // Sum row (two blank spacer columns like your example)
         const T3 = '\t\t\t';
-        lines.push(`${T3}sum\t${s.totalLoss.toFixed(6)}\t${Math.round(s.totalLoss * 1e6)}`);
-        lines.push(`${T3}percentages\t${s.scenarioLossPercentage.toFixed(2)}`);
+        lines.push(`${T3}${L.totalLoss}\t${s.totalLoss.toFixed(6)}\t${Math.round(s.totalLoss * 1e6)}`);
+        lines.push(`${T3}${L.lossPct}\t${s.scenarioLossPercentage.toFixed(2)}`);
         
 
         // Blank line between scenarios
